@@ -23,15 +23,21 @@ GPIO.setmode(GPIO.BCM)
 TRIG = 23          # Ultrasonic Sensor TRIG pin
 ECHO = 24          # Ultrasonic Sensor ECHO pin
 DHT_PIN = 4        # DHT11 data pin
-RED_LED_PIN = 17   # Red LED pin for intrusion alert
-YELLOW_LED_PIN = 27 # Yellow LED pin for environmental alert
-BUTTON_PIN = 22    # Pushbutton pin for arm/disarm
+
+RED_LED_PIN = 17        # Red LED pin for intrusion alert
+RGB_RED_PIN = 27        # Red channel of RGB LED (for environmental alerts)
+RGB_GREEN_PIN = 22      # Green channel of RGB LED
+RGB_BLUE_PIN = 5        # Blue channel of RGB LED
+
+BUTTON_PIN = 6          # Pushbutton pin for arm/disarm 
 
 # Set up GPIO pins
 GPIO.setup(TRIG, GPIO.OUT)
 GPIO.setup(ECHO, GPIO.IN)
 GPIO.setup(RED_LED_PIN, GPIO.OUT)
-GPIO.setup(YELLOW_LED_PIN, GPIO.OUT)
+GPIO.setup(RGB_RED_PIN, GPIO.OUT)
+GPIO.setup(RGB_GREEN_PIN, GPIO.OUT)
+GPIO.setup(RGB_BLUE_PIN, GPIO.OUT)
 GPIO.setup(BUTTON_PIN, GPIO.IN, pull_up_down=GPIO.PUD_UP)  # Pull-up resistor for button
 
 # Flask web app routes
@@ -92,27 +98,7 @@ def get_temperature_and_humidity():
     return temperature, humidity
 
 def send_notification(message):
-    # Email configuration
-    smtp_server = 'smtp.gmail.com'
-    smtp_port = 587
-    sender_email = 'your_email@gmail.com'         # Replace with your email
-    receiver_email = 'user_phone_number@carrier_sms_gateway.com'  # Replace with your phone's SMS gateway
-    password = 'your_email_password'              # Replace with your email password or app-specific password
-
-    msg = MIMEText(message)
-    msg['Subject'] = 'Home Security Alert'
-    msg['From'] = sender_email
-    msg['To'] = receiver_email
-
-    try:
-        server = smtplib.SMTP(smtp_server, smtp_port)
-        server.starttls()
-        server.login(sender_email, password)
-        server.sendmail(sender_email, [receiver_email], msg.as_string())
-        server.quit()
-        print("Notification sent.")
-    except Exception as e:
-        print(f"Failed to send notification: {e}")
+  print(f'TODO: send alarm: ${message}') 
 
 def movement_detection():
     global alarm_armed
@@ -156,13 +142,44 @@ def environmental_monitoring():
         if temperature is None or humidity is None:
             continue
 
+        # Reset RGB LED to off
+        GPIO.output(RGB_RED_PIN, False)
+        GPIO.output(RGB_GREEN_PIN, False)
+        GPIO.output(RGB_BLUE_PIN, False)
+
         if not (20 <= temperature <= 25) or not (30 <= humidity <= 60):
-            # Turn on yellow LED
-            GPIO.output(YELLOW_LED_PIN, True)
+            # Turn on RGB LED to indicate environmental alert
+            # For example, red if temperature is too high, blue if humidity is too low
+            if temperature > 25:
+                # Temperature too high, turn on red
+                GPIO.output(RGB_RED_PIN, True)
+                alert_color = "Red (High Temperature)"
+            elif temperature < 20:
+                # Temperature too low, turn on blue
+                GPIO.output(RGB_BLUE_PIN, True)
+                alert_color = "Blue (Low Temperature)"
+            elif humidity > 60:
+                # Humidity too high, turn on green
+                GPIO.output(RGB_GREEN_PIN, True)
+                alert_color = "Green (High Humidity)"
+            elif humidity < 30:
+                # Humidity too low, turn on blue
+                GPIO.output(RGB_BLUE_PIN, True)
+                alert_color = "Blue (Low Humidity)"
+            else:
+                # General environmental alert, turn on white (all colors)
+                GPIO.output(RGB_RED_PIN, True)
+                GPIO.output(RGB_GREEN_PIN, True)
+                GPIO.output(RGB_BLUE_PIN, True)
+                alert_color = "White (General Alert)"
+
             # Send notification
-            send_notification(f"Environmental Alert! Temp: {temperature}C, Humidity: {humidity}%")
+            send_notification(f"Environmental Alert! Temp: {temperature}C, Humidity: {humidity}%. Alert Color: {alert_color}")
         else:
-            GPIO.output(YELLOW_LED_PIN, False)
+            # Environment is normal; turn off RGB LED
+            GPIO.output(RGB_RED_PIN, False)
+            GPIO.output(RGB_GREEN_PIN, False)
+            GPIO.output(RGB_BLUE_PIN, False)
 
         time.sleep(60)  # Check every minute
 
