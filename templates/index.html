@@ -1,0 +1,16 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <title>Home Security System</title>
+  </head>
+  <body>
+    <h1>Home Security System</h1>
+    <p>Alarm is currently: {{ status }}</p>
+    <form action="/arm" method="get">
+      <button type="submit">Arm Alarm</button>
+    </form>
+    <form action="/disarm" method="get">
+      <button type="submit">Disarm Alarm</button>
+    </form>
+  </body>
+</html>
