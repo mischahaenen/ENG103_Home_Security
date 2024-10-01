@@ -2,11 +2,12 @@ from flask import Flask, render_template, redirect, url_for
 import threading
 import time
 import RPi.GPIO as GPIO
-import Adafruit_DHT
+import adafruit_dht
 from gpiozero import Button
 import smtplib
 from email.mime.text import MIMEText
 import pygame
+import board
 
 # Initialize Pygame mixer for audio output
 pygame.mixer.init()
@@ -94,8 +95,16 @@ def get_distance():
     return distance
 
 def get_temperature_and_humidity():
-    humidity, temperature = Adafruit_DHT.read_retry(Adafruit_DHT.DHT11, DHT_PIN)
-    return temperature, humidity
+    try:
+        dht_device = adafruit_dht.DHT11(board.D4)
+        temp = dht_device.temperature
+        humidity = dht_device.humidity
+        print(temp)
+        print(humidity)
+        return temp, huminity
+    except:
+        print("Could not read humidity sensor")
+        return 0, 0
 
 def send_notification(message):
   print(f'TODO: send alarm: ${message}') 
@@ -114,6 +123,7 @@ def movement_detection():
             distances.pop(0)
 
         average_distance = sum(distances) / len(distances)
+        print(average_distance)
 
         if len(distances) == max_samples:
             # Check for significant change
@@ -185,13 +195,16 @@ def environmental_monitoring():
 
 def button_listener():
     global alarm_armed
-    button = Button(BUTTON_PIN)
-    while True:
-        button.wait_for_press()
-        alarm_armed = not alarm_armed
-        status = "Armed" if alarm_armed else "Disarmed"
-        print(f"Alarm {status} via Button")
-        time.sleep(0.5)  # Debounce delay
+    try:
+        button = Button(BUTTON_PIN, pull_up=True)
+        while True:
+            button.wait_for_press()
+            alarm_armed = not alarm_armed
+            status = "Armed" if alarm_armed else "Disarmed"
+            print(f"Alarm {status} via Button")
+            time.sleep(0.5)  # Debounce delay
+    except:
+        print("Could not set GPIO pin")
 
 if __name__ == '__main__':
     try:
