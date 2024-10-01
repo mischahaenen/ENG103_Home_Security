@@ -8,6 +8,7 @@ import smtplib
 from email.mime.text import MIMEText
 import pygame
 import board
+from picozero import RGBLED
 
 # Initialize Pygame mixer for audio output
 pygame.mixer.init()
@@ -40,6 +41,7 @@ GPIO.setup(RGB_RED_PIN, GPIO.OUT)
 GPIO.setup(RGB_GREEN_PIN, GPIO.OUT)
 GPIO.setup(RGB_BLUE_PIN, GPIO.OUT)
 GPIO.setup(BUTTON_PIN, GPIO.IN, pull_up_down=GPIO.PUD_UP)  # Pull-up resistor for button
+rgb = RGBLED(red=RGB_RED_PIN, green=RGB_GREEN_PIN, blue=RGB_BLUE_PIN)
 
 # Flask web app routes
 @app.route('/')
@@ -74,37 +76,36 @@ def get_distance():
     pulse_start = time.time()
     timeout = pulse_start + 0.04  # 40ms timeout
     while GPIO.input(ECHO) == 0:
-        pulse_start = time.time()
-        if pulse_start > timeout:
+        if time.time() > timeout:
             return None  # Timeout
+        pulse_start = time.time()
 
     # Wait for echo end
     pulse_end = time.time()
+    timeout = pulse_end + 0.04  # 40ms timeout
     while GPIO.input(ECHO) == 1:
-        pulse_end = time.time()
-        if pulse_end - pulse_start > 0.04:
+        if time.time() > timeout:
             return None  # Timeout
+        pulse_end = time.time()
 
-    # Calculate pulse duration
+    # Calculate pulse duration and distance
     pulse_duration = pulse_end - pulse_start
-
-    # Calculate distance
     distance = pulse_duration * 17150
-    distance = round(distance, 2)
-
-    return distance
+    return round(distance, 2)
 
 def get_temperature_and_humidity():
     try:
         dht_device = adafruit_dht.DHT11(board.D4)
-        temp = dht_device.temperature
+        temperature = dht_device.temperature
         humidity = dht_device.humidity
-        print(temp)
-        print(humidity)
-        return temp, huminity
-    except:
-        print("Could not read humidity sensor")
-        return 0, 0
+        print(f"Temperature: {temperature}°C, Humidity: {humidity}%")
+        return temperature, humidity
+    except RuntimeError as error:
+        print(f"Error reading from DHT11: {error}")
+        return None, None
+    except Exception as error:
+        print(f"Unexpected error reading DHT11: {error}")
+        return None, None
 
 def send_notification(message):
   print(f'TODO: send alarm: ${message}') 
@@ -123,7 +124,7 @@ def movement_detection():
             distances.pop(0)
 
         average_distance = sum(distances) / len(distances)
-        print(average_distance)
+        send_notification(average_distance)
 
         if len(distances) == max_samples:
             # Check for significant change
@@ -133,7 +134,7 @@ def movement_detection():
                     # Trigger red LED and audio output
                     GPIO.output(RED_LED_PIN, True)
                     # Play audio alert
-                    pygame.mixer.music.load('alert_sound.mp3')  # Ensure this file exists
+                    pygame.mixer.music.load('alert_sound.mp3')
                     pygame.mixer.music.play()
                     # Send notification
                     send_notification("Movement detected!")
@@ -146,50 +147,34 @@ def movement_detection():
 
         time.sleep(0.5)
 
+
 def environmental_monitoring():
     while True:
         temperature, humidity = get_temperature_and_humidity()
         if temperature is None or humidity is None:
+            time.sleep(2)  # Wait before retrying
             continue
 
-        # Reset RGB LED to off
-        GPIO.output(RGB_RED_PIN, False)
-        GPIO.output(RGB_GREEN_PIN, False)
-        GPIO.output(RGB_BLUE_PIN, False)
-
-        if not (20 <= temperature <= 25) or not (30 <= humidity <= 60):
-            # Turn on RGB LED to indicate environmental alert
-            # For example, red if temperature is too high, blue if humidity is too low
-            if temperature > 25:
-                # Temperature too high, turn on red
-                GPIO.output(RGB_RED_PIN, True)
-                alert_color = "Red (High Temperature)"
-            elif temperature < 20:
-                # Temperature too low, turn on blue
-                GPIO.output(RGB_BLUE_PIN, True)
-                alert_color = "Blue (Low Temperature)"
-            elif humidity > 60:
-                # Humidity too high, turn on green
-                GPIO.output(RGB_GREEN_PIN, True)
-                alert_color = "Green (High Humidity)"
-            elif humidity < 30:
-                # Humidity too low, turn on blue
-                GPIO.output(RGB_BLUE_PIN, True)
-                alert_color = "Blue (Low Humidity)"
-            else:
-                # General environmental alert, turn on white (all colors)
-                GPIO.output(RGB_RED_PIN, True)
-                GPIO.output(RGB_GREEN_PIN, True)
-                GPIO.output(RGB_BLUE_PIN, True)
-                alert_color = "White (General Alert)"
-
-            # Send notification
-            send_notification(f"Environmental Alert! Temp: {temperature}C, Humidity: {humidity}%. Alert Color: {alert_color}")
+        if temperature > 25:
+            rgb.color = (255, 0, 0)  # Red
+            alert_color = "Red (High Temperature)"
+        elif temperature < 20:
+            rgb.color = (0, 0, 255)  # Blue
+            alert_color = "Blue (Low Temperature)"
+        elif humidity > 60:
+            rgb.color = (0, 255, 0)  # Green
+            alert_color = "Green (High Humidity)"
+        elif humidity < 30:
+            rgb.color = (0, 0, 255)  # Blue
+            alert_color = "Blue (Low Humidity)"
         else:
-            # Environment is normal; turn off RGB LED
-            GPIO.output(RGB_RED_PIN, False)
-            GPIO.output(RGB_GREEN_PIN, False)
-            GPIO.output(RGB_BLUE_PIN, False)
+            rgb.color = (0, 0, 0)  # Off
+            alert_color = "Off (Normal Conditions)"
+
+        print(f"Environmental Status: Temp: {temperature}°C, Humidity: {humidity}%. Alert Color: {alert_color}")
+        
+        if alert_color != "Off (Normal Conditions)":
+            send_notification(f"Environmental Alert! Temp: {temperature}°C, Humidity: {humidity}%. Alert Color: {alert_color}")
 
         time.sleep(60)  # Check every minute
 
