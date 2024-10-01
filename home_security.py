@@ -4,7 +4,6 @@ import time
 import RPi.GPIO as GPIO
 import adafruit_dht
 import smtplib
-from email.mime.text import MIMEText
 import pygame
 import board
 from picozero import RGBLED, Button
