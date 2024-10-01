@@ -3,12 +3,11 @@ import threading
 import time
 import RPi.GPIO as GPIO
 import adafruit_dht
-from gpiozero import Button
 import smtplib
 from email.mime.text import MIMEText
 import pygame
 import board
-from picozero import RGBLED
+from picozero import RGBLED, Button
 
 # Initialize Pygame mixer for audio output
 pygame.mixer.init()
@@ -40,7 +39,7 @@ GPIO.setup(RED_LED_PIN, GPIO.OUT)
 GPIO.setup(RGB_RED_PIN, GPIO.OUT)
 GPIO.setup(RGB_GREEN_PIN, GPIO.OUT)
 GPIO.setup(RGB_BLUE_PIN, GPIO.OUT)
-GPIO.setup(BUTTON_PIN, GPIO.IN, pull_up_down=GPIO.PUD_UP)  # Pull-up resistor for button
+#GPIO.setup(BUTTON_PIN, GPIO.IN, pull_up_down=GPIO.PUD_UP)
 rgb = RGBLED(red=RGB_RED_PIN, green=RGB_GREEN_PIN, blue=RGB_BLUE_PIN)
 
 # Flask web app routes
@@ -149,6 +148,7 @@ def movement_detection():
 
 
 def environmental_monitoring():
+    global rgb
     while True:
         temperature, humidity = get_temperature_and_humidity()
         if temperature is None or humidity is None:
@@ -180,8 +180,9 @@ def environmental_monitoring():
 
 def button_listener():
     global alarm_armed
+    global BUTTON_PIN
     try:
-        button = Button(BUTTON_PIN, pull_up=True)
+        button = Button(BUTTON_PIN)
         while True:
             button.wait_for_press()
             alarm_armed = not alarm_armed
