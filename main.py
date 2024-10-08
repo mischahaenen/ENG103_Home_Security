@@ -38,8 +38,12 @@ def get_distance():
 
     return distance
 
+print("Hello")
+
+
 # Main program
 if __name__ == '__main__':
+    print("Hello")
     try:
         while True:
             dist = get_distance()
@@ -47,6 +51,6 @@ if __name__ == '__main__':
             time.sleep(1)
 
     # Reset by pressing CTRL + C
-    except KeyboardInterrupt:
-        print("Measurement stopped by User")
+    except Exception as error:
+        print(error)
         GPIO.gpiochip_close(h)

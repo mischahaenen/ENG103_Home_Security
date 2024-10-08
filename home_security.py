@@ -6,41 +6,46 @@ import adafruit_dht
 import smtplib
 import pygame
 import board
-from picozero import RGBLED, Button
+from gpiozero import Button, RGBLED
 
 # Initialize Pygame mixer for audio output
 pygame.mixer.init()
 
 app = Flask(__name__)
 
+
+#Initialize LEd
+
+
 # Global variable to track alarm status
 alarm_armed = False
 
-# GPIO setup
-GPIO.setmode(GPIO.BCM)
 
-# GPIO Pins
+#Ultrasonic Sensor  GPIO Pins
 TRIG = 23          # Ultrasonic Sensor TRIG pin
 ECHO = 24          # Ultrasonic Sensor ECHO pin
-DHT_PIN = 4        # DHT11 data pin
+DHT_PIN = 14        # DHT11 data pin
 
+#RGB GPIO Pins
 RED_LED_PIN = 17        # Red LED pin for intrusion alert
 RGB_RED_PIN = 27        # Red channel of RGB LED (for environmental alerts)
 RGB_GREEN_PIN = 22      # Green channel of RGB LED
 RGB_BLUE_PIN = 5        # Blue channel of RGB LED
 
+#Button GPIO Pin
 BUTTON_PIN = 6          # Pushbutton pin for arm/disarm 
 
+# GPIO setup
+GPIO.setmode(GPIO.BCM)
 # Set up GPIO pins
 GPIO.setup(TRIG, GPIO.OUT)
-GPIO.setup(ECHO, GPIO.IN)
+GPIO.setup(ECHO, GPIO.OUT)
 GPIO.setup(RED_LED_PIN, GPIO.OUT)
 GPIO.setup(RGB_RED_PIN, GPIO.OUT)
 GPIO.setup(RGB_GREEN_PIN, GPIO.OUT)
 GPIO.setup(RGB_BLUE_PIN, GPIO.OUT)
 #GPIO.setup(BUTTON_PIN, GPIO.IN, pull_up_down=GPIO.PUD_UP)
-rgb = RGBLED(red=RGB_RED_PIN, green=RGB_GREEN_PIN, blue=RGB_BLUE_PIN)
-
+rgb = RGBLED(RGB_RED_PIN, RGB_GREEN_PIN, RGB_BLUE_PIN)
 # Flask web app routes
 @app.route('/')
 def index():
@@ -61,49 +66,51 @@ def disarm_alarm():
     return redirect(url_for('index'))
 
 def get_distance():
-    # Ensure output has no residual high
+    # Set TRIG LOW
     GPIO.output(TRIG, False)
-    time.sleep(0.1)
+    print('start measuring')
+    time.sleep(2)
 
-    # Generate trigger pulse
+    # Send 10us pulse to TRIG
     GPIO.output(TRIG, True)
-    time.sleep(0.00001)  # 10 microsecond pulse
+    time.sleep(0.00001)
     GPIO.output(TRIG, False)
 
-    # Wait for echo start
-    pulse_start = time.time()
-    timeout = pulse_start + 0.04  # 40ms timeout
+    print(GPIO.input(ECHO))
+
+    # Start recording the time when the wave is sent
     while GPIO.input(ECHO) == 0:
-        if time.time() > timeout:
-            return None  # Timeout
         pulse_start = time.time()
 
-    # Wait for echo end
-    pulse_end = time.time()
-    timeout = pulse_end + 0.04  # 40ms timeout
+    # Record time of arrival
     while GPIO.input(ECHO) == 1:
-        if time.time() > timeout:
-            return None  # Timeout
         pulse_end = time.time()
 
-    # Calculate pulse duration and distance
+    # Calculate the difference in times
     pulse_duration = pulse_end - pulse_start
+
+    # Multiply with the sonic speed (34300 cm/s)
+    # and divide by 2, because there and back
     distance = pulse_duration * 17150
-    return round(distance, 2)
+    distance = round(distance, 2)
+
+    print(distance)
+    return distance
+
 
 def get_temperature_and_humidity():
     try:
-        dht_device = adafruit_dht.DHT11(board.D4)
+        dht_device = adafruit_dht.DHT11(board.D14)
         temperature = dht_device.temperature
         humidity = dht_device.humidity
         print(f"Temperature: {temperature}°C, Humidity: {humidity}%")
         return temperature, humidity
     except RuntimeError as error:
         print(f"Error reading from DHT11: {error}")
-        return None, None
+        return 30, 90
     except Exception as error:
         print(f"Unexpected error reading DHT11: {error}")
-        return None, None
+        return 0, 0
 
 def send_notification(message):
   print(f'TODO: send alarm: ${message}') 
@@ -155,16 +162,22 @@ def environmental_monitoring():
             continue
 
         if temperature > 25:
-            rgb.color = (255, 0, 0)  # Red
+            rgb.color = (1, 0, 0)  # Red
             alert_color = "Red (High Temperature)"
+            if humidity < 30:
+                rgb.color = (1, 0, 1)
+                alert_color = "Purple (High Temperature and Low Humidity)"
+            elif humidity > 60:
+                rgb.color = (0, 1, 0)  
+                alert_color = "Red (High Temperature and High Humidity)"
         elif temperature < 20:
-            rgb.color = (0, 0, 255)  # Blue
+            rgb.color = (0, 0, 1)  # Blue
             alert_color = "Blue (Low Temperature)"
         elif humidity > 60:
-            rgb.color = (0, 255, 0)  # Green
+            rgb.color = (0, 1, 0)  # Green
             alert_color = "Green (High Humidity)"
         elif humidity < 30:
-            rgb.color = (0, 0, 255)  # Blue
+            rgb.color = (0, 0, 1)  # Blue
             alert_color = "Blue (Low Humidity)"
         else:
             rgb.color = (0, 0, 0)  # Off
@@ -179,7 +192,6 @@ def environmental_monitoring():
 
 def button_listener():
     global alarm_armed
-    global BUTTON_PIN
     try:
         button = Button(BUTTON_PIN)
         while True:
