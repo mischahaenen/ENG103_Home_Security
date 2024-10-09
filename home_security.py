@@ -11,7 +11,7 @@ import distance_read
 
 
 # Initialize app
-app = Flask(__name__)
+app = Flask(__name__, static_url_path='/static')
 
 # Global variable to track alarm status
 alarm_armed = False
