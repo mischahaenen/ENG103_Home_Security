@@ -3,8 +3,6 @@ import threading
 import time
 import RPi.GPIO as GPIO
 import adafruit_dht
-import smtplib
-import pygame
 import board
 from gpiozero import Button, RGBLED
 import distance_read
