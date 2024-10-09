@@ -7,19 +7,14 @@ import smtplib
 import pygame
 import board
 from gpiozero import Button, RGBLED
+import distance_read
 
-# Initialize Pygame mixer for audio output
-pygame.mixer.init()
 
+# Initialize app
 app = Flask(__name__)
-
-
-#Initialize LEd
-
 
 # Global variable to track alarm status
 alarm_armed = False
-
 
 #Ultrasonic Sensor  GPIO Pins
 TRIG = 23          # Ultrasonic Sensor TRIG pin
@@ -44,8 +39,8 @@ GPIO.setup(RED_LED_PIN, GPIO.OUT)
 GPIO.setup(RGB_RED_PIN, GPIO.OUT)
 GPIO.setup(RGB_GREEN_PIN, GPIO.OUT)
 GPIO.setup(RGB_BLUE_PIN, GPIO.OUT)
-#GPIO.setup(BUTTON_PIN, GPIO.IN, pull_up_down=GPIO.PUD_UP)
 rgb = RGBLED(RGB_RED_PIN, RGB_GREEN_PIN, RGB_BLUE_PIN)
+
 # Flask web app routes
 @app.route('/')
 def index():
@@ -68,15 +63,12 @@ def disarm_alarm():
 def get_distance():
     # Set TRIG LOW
     GPIO.output(TRIG, False)
-    print('start measuring')
     time.sleep(2)
 
     # Send 10us pulse to TRIG
     GPIO.output(TRIG, True)
     time.sleep(0.00001)
     GPIO.output(TRIG, False)
-
-    print(GPIO.input(ECHO))
 
     # Start recording the time when the wave is sent
     while GPIO.input(ECHO) == 0:
@@ -94,20 +86,20 @@ def get_distance():
     distance = pulse_duration * 17150
     distance = round(distance, 2)
 
-    print(distance)
     return distance
 
 
 def get_temperature_and_humidity():
     try:
         dht_device = adafruit_dht.DHT11(board.D14)
+        dht_device.measure()
         temperature = dht_device.temperature
         humidity = dht_device.humidity
         print(f"Temperature: {temperature}°C, Humidity: {humidity}%")
         return temperature, humidity
     except RuntimeError as error:
         print(f"Error reading from DHT11: {error}")
-        return 30, 90
+        return 0, 0
     except Exception as error:
         print(f"Unexpected error reading DHT11: {error}")
         return 0, 0
@@ -116,42 +108,14 @@ def send_notification(message):
   print(f'TODO: send alarm: ${message}') 
 
 def movement_detection():
-    global alarm_armed
-    distances = []
-    max_samples = 5  # Number of samples to average
-    while True:
-        distance = get_distance()
-        if distance is None:
-            continue
-
-        distances.append(distance)
-        if len(distances) > max_samples:
-            distances.pop(0)
-
-        average_distance = sum(distances) / len(distances)
-        send_notification(average_distance)
-
-        if len(distances) == max_samples:
-            # Check for significant change
-            distance_change = abs(distance - average_distance)
-            if distance_change > 5:  # Threshold in cm
-                if alarm_armed:
-                    # Trigger red LED and audio output
-                    GPIO.output(RED_LED_PIN, True)
-                    # Play audio alert
-                    pygame.mixer.music.load('alert_sound.mp3')
-                    pygame.mixer.music.play()
-                    # Send notification
-                    send_notification("Movement detected!")
-                else:
-                    pass
-            else:
-                GPIO.output(RED_LED_PIN, False)
-        else:
-            GPIO.output(RED_LED_PIN, False)
-
-        time.sleep(0.5)
-
+    try:
+        while True:
+            print("INFO: Start measuring")
+            dist = distance_read.get_distance()
+            print("Measured Distance = {:.2f} cm".format(dist))
+            time.sleep(1)
+    except Exception as error:
+        print(error)
 
 def environmental_monitoring():
     global rgb
@@ -206,16 +170,18 @@ def button_listener():
 if __name__ == '__main__':
     try:
         # Start the web server in a separate thread
+        print("INFO: Start Webserver")
         threading.Thread(target=app.run, kwargs={'host':'0.0.0.0', 'port':5000}).start()
         # Start the movement detection thread
+        print("INFO: Start Movement Detection")
         threading.Thread(target=movement_detection).start()
         # Start the environmental monitoring thread
+        print("INFO: Start Temperature and Humidity control")
         threading.Thread(target=environmental_monitoring).start()
         # Start the button listener thread
+        print("INFO: Start Button listener")
         threading.Thread(target=button_listener).start()
 
-        while True:
-            time.sleep(1)
     except KeyboardInterrupt:
         print("Exiting program.")
     finally:
